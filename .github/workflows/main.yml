@@ -38,21 +38,18 @@ jobs:
           cd "$APP_PARENT"
           echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
           
-          # Создаём иконку-заглушку, если в архиве нет mipmap
-          if [ ! -d "app/src/main/res/mipmap-anydpi-v26" ] && [ ! -d "app/src/main/res/mipmap-mdpi" ]; then
-            mkdir -p app/src/main/res/mipmap-anydpi-v26
-            cat << 'EOF' > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-          <vector xmlns:android="http://android.com"
-              android:width="108dp"
-              android:height="108dp"
-              android:viewportWidth="108"
-              android:viewportHeight="108">
-              <path android:fillColor="#3DDC84" android:pathData="M0,0h108v108h-108z"/>
-              <path android:fillColor="#FFFFFF" android:pathData="M50,30h8v48h-8zM30,50h48v8h-48z"/>
-          </vector>
-          EOF
-            cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-          fi
+          # Генерируем настоящую PNG-иконку 48x48, чтобы Android гарантированно открывал приложение
+          mkdir -p app/src/main/res/mipmap-mdpi
+          python3 -c '
+          import zlib, struct
+          w, h = 48, 48
+          raw = b"".join(b"\x00" + (b"\x3d\xdc\x84\xff" * w) for _ in range(h))
+          def chunk(tag, data):
+              return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data))
+          png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack("!IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+          open("app/src/main/res/mipmap-mdpi/ic_launcher.png", "wb").write(png)
+          open("app/src/main/res/mipmap-mdpi/ic_launcher_round.png", "wb").write(png)
+          '
 
           if [ ! -f "gradle.properties" ]; then
             cat << 'EOF' > gradle.properties
@@ -124,3 +121,4 @@ jobs:
         with:
           name: counters-debug-apk
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+a
