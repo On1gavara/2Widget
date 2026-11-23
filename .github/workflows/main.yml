@@ -121,4 +121,3 @@ jobs:
         with:
           name: counters-debug-apk
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
-a
