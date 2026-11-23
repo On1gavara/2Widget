@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK from ZIP
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Скачать код из репозитория
+      - name: Скачать репозиторий
         uses: actions/checkout@v4
 
       - name: Настроить Java 17
@@ -19,16 +19,87 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Сгенерировать Gradle Wrapper
+      - name: Настроить Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.4'
 
+      - name: Распаковать ZIP и подготовить проект
+        run: |
+          mkdir -p project
+          unzip -q counters-widget.zip -d project
+          
+          # Ищем, где внутри распакованного архива лежит папка app
+          APP_PARENT=$(find project -maxdepth 3 -type d -name "app" -exec dirname {} \; | head -n 1)
+          if [ -z "$APP_PARENT" ]; then
+            echo "Ошибка: папка app не найдена в архиве"
+            exit 1
+          fi
+          
+          cd "$APP_PARENT"
+          echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
+          
+          # Если в архиве не было файлов Gradle, создаём их автоматически
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "Counters"
+          include(":app")
+          EOF
+          fi
+
+          if [ ! -f "build.gradle.kts" ] && [ ! -f "build.gradle" ]; then
+            cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+          fi
+
+          if [ ! -f "app/build.gradle.kts" ] && [ ! -f "app/build.gradle" ]; then
+            cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.example.counters"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.example.counters"
+                  minSdk = 24
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.appcompat:appcompat:1.6.1")
+              implementation("com.google.android.material:material:1.11.0")
+              implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+          }
+          EOF
+          fi
+
       - name: Собрать Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle assembleDebug
 
       - name: Сохранить готовый APK
         uses: actions/upload-artifact@v4
         with:
           name: counters-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
