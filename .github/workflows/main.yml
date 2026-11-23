@@ -29,7 +29,6 @@ jobs:
           mkdir -p project
           unzip -q counters-widget.zip -d project
           
-          # Ищем, где внутри распакованного архива лежит папка app
           APP_PARENT=$(find project -maxdepth 3 -type d -name "app" -exec dirname {} \; | head -n 1)
           if [ -z "$APP_PARENT" ]; then
             echo "Ошибка: папка app не найдена в архиве"
@@ -39,7 +38,13 @@ jobs:
           cd "$APP_PARENT"
           echo "PROJECT_DIR=$(pwd)" >> $GITHUB_ENV
           
-          # Если в архиве не было файлов Gradle, создаём их автоматически
+          if [ ! -f "gradle.properties" ]; then
+            cat << 'EOF' > gradle.properties
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
+          fi
+
           if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
             cat << 'EOF' > settings.gradle.kts
           pluginManagement {
